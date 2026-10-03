@@ -78,10 +78,16 @@ function startAmbience(url){
   ambUrl = url || '';
   if(!/^https:\/\/[^"<>\s]+$/i.test(ambUrl)) return;
   ambAudio = new Audio(ambUrl);
-  ambAudio.loop = true; ambAudio.muted = true;
-  ambAudio.play().catch(() => {});
-  const h = document.getElementById('sndAmb');
-  if(h) h.style.display = 'block';
+  ambAudio.loop = true;
+  ambAudio.play().then(() => {
+    const h = document.getElementById('sndAmb');
+    if(h) h.style.display = 'none';
+  }).catch(() => {
+    ambAudio.muted = true;
+    ambAudio.play().catch(() => {});
+    const h = document.getElementById('sndAmb');
+    if(h) h.style.display = 'block';
+  });
 }
 function stopAmbience(){
   if(ambAudio){ try{ ambAudio.pause(); }catch{} ambAudio = null; }
@@ -119,8 +125,16 @@ function showVideo(){
     });
   } else if(/\.(mp4|webm|ogg)(\?|#|$)/i.test(endVideo)){
     stage.innerHTML = '<div class="vid"><video id="teaser" src="' + endVideo.replace(/"/g, '') +
-      '" autoplay muted playsinline disablepictureinpicture onended="showEndCard()"></video></div>'
-      + '<div class="snd" id="snd" onclick="unmute()">tap for sound</div>';
+      '" playsinline disablepictureinpicture onended="showEndCard()"></video></div>'
+      + '<div class="snd" id="snd" style="display:none" onclick="unmute()">tap for sound</div>';
+    const v = document.getElementById('teaser');
+    v.play().then(() => {
+      document.getElementById('snd').style.display = 'none';
+    }).catch(() => {
+      v.muted = true;
+      v.play().catch(() => {});
+      document.getElementById('snd').style.display = 'block';
+    });
   } else {
     completedFallback();
   }
