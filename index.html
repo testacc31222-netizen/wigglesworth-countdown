@@ -97,6 +97,7 @@ function stopAmbience(){
 function unmuteAmb(){
   if(!ambAudio) return;
   ambAudio.muted = false;
+  ambAudio.play().catch(() => {});
   const h = document.getElementById('sndAmb');
   if(h) h.style.display = 'none';
 }
@@ -164,8 +165,13 @@ function backToCountdown(){
 function unmute(){
   const v = document.getElementById('teaser');
   const s = document.getElementById('snd');
-  if(v && v.tagName === 'VIDEO'){ v.muted = false; }
-  else if(v){ v.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', '*'); }
+  if(v && v.tagName === 'VIDEO'){ v.muted = false; v.play().catch(() => {}); }
+  else if(v){
+    try{
+      v.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+      v.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', '*');
+    }catch{}
+  }
   if(s) s.style.display = 'none';
 }
 function completedFallback(){
