@@ -28,6 +28,10 @@ body{margin:0;background:#000;color:#f02030;font-family:Caveat,cursive;display:f
 .sub{font-size:clamp(26px,4.5vw,40px);opacity:.9}
 .vid{transform:rotate(0);width:min(92vw,860px);margin:0 auto}
 .vid iframe,.vid video{width:100%;aspect-ratio:16/9;border:0;border-radius:10px;background:#000}
+body.playing{padding:0}
+body.playing .stage{max-width:none;width:100vw;transform:none}
+body.playing .vid{width:100vw;margin:0}
+body.playing .vid iframe,body.playing .vid video{height:100vh;height:100dvh;aspect-ratio:auto;border-radius:0;object-fit:cover}
 #editLink{position:fixed;right:14px;bottom:12px;color:#4a0d15;background:none;border:0;cursor:pointer;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;letter-spacing:1px}
 #editLink:hover{color:#f02030}
 #epanel{position:fixed;inset:0;z-index:50;display:none;justify-content:center;align-items:center;background:rgba(0,0,0,.85);padding:16px}
@@ -63,6 +67,7 @@ function ytId(url){
 function showVideo(){
   const stage = document.querySelector('.stage');
   if(!/^https:\/\/[^"<>\s]+$/i.test(endVideo)){ completedFallback(); return; }
+  document.body.classList.add('playing');
   const id = ytId(endVideo);
   if(id){
     stage.innerHTML = '<div class="vid"><iframe src="https://www.youtube.com/embed/' + id +
