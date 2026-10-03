@@ -26,6 +26,8 @@ body{margin:0;background:#000;color:#f02030;font-family:Caveat,cursive;display:f
 .kicker{font-size:clamp(28px,5vw,44px);opacity:.85}
 .big{font-size:clamp(64px,14vw,150px);font-weight:700;line-height:1;margin:6px 0 2px;text-shadow:0 0 26px rgba(240,32,48,.35)}
 .sub{font-size:clamp(26px,4.5vw,40px);opacity:.9}
+.vid{transform:rotate(0);width:min(92vw,860px);margin:0 auto}
+.vid iframe,.vid video{width:100%;aspect-ratio:16/9;border:0;border-radius:10px;background:#000}
 </style>
 </head>
 <body>
@@ -36,13 +38,36 @@ body{margin:0;background:#000;color:#f02030;font-family:Caveat,cursive;display:f
 </div>
 <script>
 const API = 'https://wigglesworth-moderator-applications.onrender.com/api/config';
+let endVideo = '';
 function plural(n, w){ return n + ' ' + w + (n === 1 ? '' : 's'); }
+function ytId(url){
+  const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([\w-]{6,})/);
+  return m ? m[1] : '';
+}
+function showVideo(){
+  const stage = document.querySelector('.stage');
+  if(!/^https:\/\/[^"<>\s]+$/i.test(endVideo)){ completedFallback(); return; }
+  const id = ytId(endVideo);
+  if(id){
+    stage.innerHTML = '<div class="vid"><iframe src="https://www.youtube.com/embed/' + id +
+      '?autoplay=1&rel=0" allow="autoplay; fullscreen" allowfullscreen frameborder="0"></iframe></div>';
+  } else if(/\.(mp4|webm|ogg)(\?|#|$)/i.test(endVideo)){
+    stage.innerHTML = '<div class="vid"><video src="' + endVideo.replace(/"/g, '') +
+      '" controls autoplay playsinline></video></div>';
+  } else {
+    completedFallback();
+  }
+}
+function completedFallback(){
+  document.getElementById('cdBig').textContent = 'completed.';
+  document.getElementById('cdSub').textContent = '';
+}
 function render(target, title){
   const big = document.getElementById('cdBig');
   const sub = document.getElementById('cdSub');
   document.getElementById('cdTitle').textContent = title;
   let ms = target - Date.now();
-  if(ms <= 0){ big.textContent = 'completed.'; sub.textContent = ''; return false; }
+  if(ms <= 0){ showVideo(); return false; }
   const d = Math.floor(ms / 86400000);
   const h = Math.floor(ms / 3600000) % 24;
   const m = Math.floor(ms / 60000) % 60;
@@ -55,6 +80,7 @@ fetch(API).then(r => r.json()).then(cfg => {
   const c = (cfg && cfg.countdown) || {};
   const t = Date.parse(c.target || '');
   const title = c.title || 'update';
+  endVideo = (c.endVideo || '').trim();
   if(!c.show || !t){
     document.getElementById('cdTitle').textContent = title;
     document.getElementById('cdBig').textContent = 'soon.';
