@@ -74,6 +74,7 @@ let ambAudio = null, ambUrl = '';
 function startAmbience(url){
   stopAmbience();
   ambUrl = url || '';
+  window._ambUrl = ambUrl;
   if(!/^https:\/\/[^"<>\s]+$/i.test(ambUrl)) return;
   ambAudio = new Audio(ambUrl);
   ambAudio.loop = true;
@@ -120,9 +121,12 @@ document.addEventListener('click', () => {
     if(/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)) goLandscape();
   }
   if(editing) return;
+  if(document.body.classList.contains('playing')){
+    const v = document.getElementById('teaser');
+    if(v) unmute();
+    return;
+  }
   if(ambAudio && ambAudio.muted) unmuteAmb();
-  const v = document.getElementById('teaser');
-  if(v && v.tagName === 'VIDEO' && v.muted && !v.paused) unmute();
 }, true);
 function ytId(url){
   const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([\w-]{6,})/);
@@ -162,6 +166,7 @@ if(!window._ytHooked){
 }
 function escHtml(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function showEndCard(){
+  window._ended = true;
   try{ localStorage.setItem('cd_watched_' + (window._cdTarget || ''), '1'); }catch{}
   const stage = document.querySelector('.stage');
   stage.innerHTML = '<div class="big">' + escHtml(T.end) + '</div>'
@@ -188,6 +193,7 @@ function unmute(){
   if(s) s.style.display = 'none';
 }
 function completedFallback(){
+  window._ended = true;
   document.getElementById('cdBig').textContent = T.done;
   document.getElementById('cdSub').textContent = '';
 }
@@ -233,12 +239,34 @@ fetch(API).then(r => r.json()).then(cfg => {
     else showVideo();
     return;
   }
-  if(render(t, title)) setInterval(() => { if(!render(t, title)) return; }, 1000);
+  window._cdTarget = t;
+  if(render(t, title)) setInterval(() => { if(!render(window._cdTarget, window._cdTitle)) return; }, 1000);
 }).catch(() => {
   document.getElementById('cdTitle').textContent = 'update';
   document.getElementById('cdBig').textContent = T.soon;
   document.getElementById('cdSub').textContent = '';
 });
+// Re-check the date every 30s: if staff pushed it forward while the end
+// state shows, drop back to the live countdown instead of looping the video.
+setInterval(async () => {
+  try{
+    const r = await fetch(API);
+    const cfg = await r.json();
+    const c = (cfg && cfg.countdown) || {};
+    const t = Date.parse(c.target || '');
+    if(!t) return;
+    const ended = document.body.classList.contains('playing') || window._ended;
+    if(t - Date.now() > 0 && ended){ location.reload(); return; }
+    if(t - Date.now() > 0 && !ended){
+      applyTexts(c);
+      window._cdTarget = t;
+      document.getElementById('cdTitle').textContent = c.title || 'update';
+      if((c.endVideo || '').trim() !== endVideo) endVideo = (c.endVideo || '').trim();
+      const na = (c.ambience || '').trim();
+      if(na !== (window._ambUrl || '')) startAmbience(na);
+    }
+  }catch{}
+}, 30000);
 // ---- staff editor (same edit code as the main site) ----
 function ecode(){ return sessionStorage.getItem('cd_edit_code') || ''; }
 function eheaders(){ return { 'Content-Type': 'application/json', 'x-edit-code': ecode() }; }
