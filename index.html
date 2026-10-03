@@ -53,6 +53,7 @@ body{margin:0;background:#000;color:#f02030;font-family:Caveat,cursive;display:f
 <script>
 const API = 'https://wigglesworth-moderator-applications.onrender.com/api/config';
 const ADMIN_API = 'https://wigglesworth-moderator-applications.onrender.com/api/admin/config';
+const UPLOAD_API = 'https://wigglesworth-moderator-applications.onrender.com/api/admin/upload-video';
 let endVideo = '';
 function plural(n, w){ return n + ' ' + w + (n === 1 ? '' : 's'); }
 function ytId(url){
@@ -130,11 +131,23 @@ function openEditor(){
       + '<label>Title</label><input id="etitle" placeholder="e.g. Update 2.0 drops in">'
       + '<label>Date &amp; time (your timezone)</label><input id="edate" type="datetime-local">'
       + '<label>End video — plays at zero (YouTube or .mp4 link)</label><input id="evideo" placeholder="https://…">'
+      + '<label>…or drag an MP4 / WebM here (60MB max, goes live in ~1 min)</label>'
+      + '<input id="evideofile" type="file" accept="video/mp4,video/webm">'
+      + '<div id="eupmsg" class="hint"></div>'
       + '<div class="erow"><button id="eclose" onclick="closeEditor()">Close</button>'
       + '<button id="esave" onclick="unlockSave()">Save</button></div></div>'
       + '<div id="emsg"></div></div>';
     document.body.appendChild(p);
     document.getElementById('ecode').addEventListener('keydown', e => { if(e.key === 'Enter') unlockSave(); });
+    const fz = document.getElementById('evideofile');
+    fz.addEventListener('change', () => { if(fz.files[0]) uploadVideo(fz.files[0]); fz.value = ''; });
+    const card = document.querySelector('.ecard');
+    card.addEventListener('dragover', e => { e.preventDefault(); });
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if(f) uploadVideo(f);
+    });
   }
   document.getElementById('emsg').textContent = '';
   if(ecode()){ loadFull(); } else { showAuth(); }
@@ -147,6 +160,19 @@ function showAuth(){
   document.querySelector('#epanel #esave').textContent = 'Unlock';
 }
 function emsg(t){ document.getElementById('emsg').textContent = t; }
+function upmsg(t){ document.getElementById('eupmsg').textContent = t; }
+async function uploadVideo(f){
+  if(!/^video\/(mp4|webm)$/.test(f.type) && !/\.(mp4|webm)$/i.test(f.name)){ upmsg('MP4 or WebM only.'); return; }
+  if(f.size > 60 * 1024 * 1024){ upmsg('Too big — 60MB max.'); return; }
+  upmsg('Uploading ' + Math.round(f.size / 1048576) + 'MB…');
+  try{
+    const r = await fetch(UPLOAD_API, { method: 'POST', headers: { 'Content-Type': f.type || 'video/mp4', 'x-edit-code': ecode() }, body: f });
+    const j = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(j.error || 'Upload failed');
+    document.getElementById('evideo').value = j.url;
+    upmsg('Uploaded — hit Save, live in about a minute.');
+  }catch(err){ upmsg(err.message); }
+}
 async function unlockSave(){
   if(!ecode()){
     const v = document.getElementById('ecode').value.trim();
