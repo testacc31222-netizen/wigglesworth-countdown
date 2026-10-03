@@ -49,6 +49,9 @@ body.playing .vid iframe,body.playing .vid video{height:100vh;height:100dvh;aspe
 #esave{background:#f02030;color:#fff}
 #eclose{background:transparent;color:#a49dae;border:1px solid #3a3348}
 #emsg{font-size:13px;min-height:18px;margin-top:10px;color:#f02030}
+#dropbox{border:1.5px dashed #6e1424;border-radius:12px;padding:20px 14px;text-align:center;font-family:Caveat,cursive;font-size:26px;color:#f02030;cursor:pointer;margin-top:4px}
+#dropbox span{display:block;font-family:"Segoe UI",system-ui,sans-serif;font-size:12px;color:#a49dae;margin-top:4px}
+#dropbox.hot{border-color:#f02030;background:rgba(240,32,48,.07)}
 </style>
 </head>
 <body>
@@ -131,6 +134,7 @@ if(!window._ytHooked){
 }
 function escHtml(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function showEndCard(){
+  try{ localStorage.setItem('cd_watched_' + (window._cdTarget || ''), '1'); }catch{}
   const stage = document.querySelector('.stage');
   stage.innerHTML = '<div class="big">' + escHtml(T.end) + '</div>'
     + '<div class="erow2"><button onclick="showVideo()">watch again</button>'
@@ -187,6 +191,15 @@ fetch(API).then(r => r.json()).then(cfg => {
     document.getElementById('cdSub').textContent = '';
     return;
   }
+  window._cdTarget = t;
+  document.getElementById('cdTitle').textContent = title;
+  let watched = false;
+  try{ watched = !!localStorage.getItem('cd_watched_' + t); }catch{}
+  if(t - Date.now() <= 0){
+    if(watched) showEndCard();
+    else showVideo();
+    return;
+  }
   if(render(t, title)) setInterval(() => { if(!render(t, title)) return; }, 1000);
 }).catch(() => {
   document.getElementById('cdTitle').textContent = 'update';
@@ -215,8 +228,8 @@ function openEditor(){
       + '<label>Title</label><input id="etitle" placeholder="e.g. Update 2.0 drops in">'
       + '<label>Date &amp; time (your timezone)</label><input id="edate" type="datetime-local">'
       + '<label>End video — plays at zero (YouTube or .mp4 link)</label><input id="evideo" placeholder="https://…">'
-      + '<label>…or drag an MP4 / WebM / MP3 here (60MB max, goes live in ~1 min)</label>'
-      + '<input id="evideofile" type="file" accept="video/mp4,video/webm,audio/mpeg,audio/ogg,audio/wav">'
+      + '<label>Drop a teaser or ambience file</label>'
+      + '<div id="dropbox">Drop MP4 / MP3 here<span>or click to browse · 60MB max · live in ~1 min</span><input id="evideofile" type="file" accept="video/mp4,video/webm,audio/mpeg,audio/ogg,audio/wav,audio/mp4,audio/x-wav" style="display:none"></div>'
       + '<div id="eupmsg" class="hint"></div>'
       + '<label>Spooky ambience — MP3 link, loops forever (empty for silence)</label><input id="eamb" placeholder="https://…/ambience.mp3">'
       + '<label>Words — {d}=days {h}=hours {m}=mins {s}=secs</label>'
@@ -232,13 +245,14 @@ function openEditor(){
     document.body.appendChild(p);
     document.getElementById('ecode').addEventListener('keydown', e => { if(e.key === 'Enter') unlockSave(); });
     const fz = document.getElementById('evideofile');
-    fz.addEventListener('change', () => { if(fz.files[0]) uploadVideo(fz.files[0]); fz.value = ''; });
-    const card = document.querySelector('.ecard');
-    card.addEventListener('dragover', e => { e.preventDefault(); });
-    card.addEventListener('drop', e => {
-      e.preventDefault();
+    fz.addEventListener('change', () => { if(fz.files[0]) uploadMedia(fz.files[0]); fz.value = ''; });
+    const dz = document.getElementById('dropbox');
+    dz.addEventListener('click', () => fz.click());
+    ['dragover', 'dragenter'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('hot'); }));
+    ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('hot'); }));
+    dz.addEventListener('drop', e => {
       const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if(f) uploadVideo(f);
+      if(f) uploadMedia(f);
     });
   }
   document.getElementById('emsg').textContent = '';
@@ -253,18 +267,19 @@ function showAuth(){
 }
 function emsg(t){ document.getElementById('emsg').textContent = t; }
 function upmsg(t){ document.getElementById('eupmsg').textContent = t; }
-async function uploadVideo(f){
-  const isAudio = /^audio\//.test(f.type) || /\.(mp3|ogg|wav|m4a)$/i.test(f.name);
-  const isVideo = /^video\//.test(f.type) || /\.(mp4|webm)$/i.test(f.name);
-  if(!isAudio && !isVideo){ upmsg('MP4, WebM or MP3 only.'); return; }
+async function uploadMedia(f){
+  const okType = /^(video|audio)\//.test(f.type) || /\.(mp4|webm|mp3|ogg|wav|m4a)$/i.test(f.name);
+  if(!okType){ upmsg('Video or MP3 only.'); return; }
   if(f.size > 60 * 1024 * 1024){ upmsg('Too big — 60MB max.'); return; }
   upmsg('Uploading ' + Math.round(f.size / 1048576) + 'MB…');
   try{
-    const r = await fetch(UPLOAD_API, { method: 'POST', headers: { 'Content-Type': f.type || (isAudio ? 'audio/mpeg' : 'video/mp4'), 'x-edit-code': ecode() }, body: f });
+    const ct = /^audio\//.test(f.type) ? f.type : (/^video\//.test(f.type) ? f.type : (/\.(mp3|ogg|wav|m4a)$/i.test(f.name) ? 'audio/mpeg' : 'video/mp4'));
+    const r = await fetch(UPLOAD_API, { method: 'POST', headers: { 'Content-Type': ct, 'x-edit-code': ecode() }, body: f });
     const j = await r.json().catch(() => ({}));
     if(!r.ok) throw new Error(j.error || 'Upload failed');
-    document.getElementById(isAudio ? 'eamb' : 'evideo').value = j.url;
-    upmsg('Uploaded — hit Save, live in about a minute.');
+    const audioFile = /^audio\//.test(f.type) || /\.(mp3|ogg|wav|m4a)$/i.test(f.name);
+    document.getElementById(audioFile ? 'eamb' : 'evideo').value = j.url;
+    upmsg((audioFile ? 'Ambience' : 'Video') + ' uploaded — hit Save, live in about a minute.');
   }catch(err){ upmsg(err.message); }
 }
 async function unlockSave(){
