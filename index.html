@@ -28,6 +28,7 @@ body{margin:0;background:#000;color:#f02030;font-family:Caveat,cursive;display:f
 .sub{font-size:clamp(26px,4.5vw,40px);opacity:.9}
 .vid{transform:rotate(0);width:min(92vw,860px);margin:0 auto}
 .vid iframe,.vid video{width:100%;aspect-ratio:16/9;border:0;border-radius:10px;background:#000}
+.snd{position:fixed;left:50%;transform:translateX(-50%) rotate(-2deg);bottom:26px;z-index:20;font-family:Caveat,cursive;font-size:30px;color:#f02030;cursor:pointer;text-shadow:0 0 14px rgba(240,32,48,.5)}
 body.playing{padding:0}
 body.playing .stage{max-width:none;width:100vw;transform:none}
 body.playing .vid{width:100vw;margin:0}
@@ -70,14 +71,23 @@ function showVideo(){
   document.body.classList.add('playing');
   const id = ytId(endVideo);
   if(id){
-    stage.innerHTML = '<div class="vid"><iframe src="https://www.youtube.com/embed/' + id +
-      '?autoplay=1&rel=0" allow="autoplay; fullscreen" allowfullscreen frameborder="0"></iframe></div>';
+    stage.innerHTML = '<div class="vid"><iframe id="teaser" src="https://www.youtube.com/embed/' + id +
+      '?autoplay=1&mute=1&controls=0&rel=0&enablejsapi=1" allow="autoplay; fullscreen" allowfullscreen frameborder="0"></iframe></div>'
+      + '<div class="snd" id="snd" onclick="unmute()">tap for sound</div>';
   } else if(/\.(mp4|webm|ogg)(\?|#|$)/i.test(endVideo)){
-    stage.innerHTML = '<div class="vid"><video src="' + endVideo.replace(/"/g, '') +
-      '" controls autoplay playsinline></video></div>';
+    stage.innerHTML = '<div class="vid"><video id="teaser" src="' + endVideo.replace(/"/g, '') +
+      '" autoplay muted loop playsinline disablepictureinpicture></video></div>'
+      + '<div class="snd" id="snd" onclick="unmute()">tap for sound</div>';
   } else {
     completedFallback();
   }
+}
+function unmute(){
+  const v = document.getElementById('teaser');
+  const s = document.getElementById('snd');
+  if(v && v.tagName === 'VIDEO'){ v.muted = false; }
+  else if(v){ v.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', '*'); }
+  if(s) s.style.display = 'none';
 }
 function completedFallback(){
   document.getElementById('cdBig').textContent = 'completed.';
