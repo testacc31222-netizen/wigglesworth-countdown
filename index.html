@@ -57,13 +57,45 @@ body.playing .vid iframe,body.playing .vid video{height:100vh;height:100dvh;aspe
   <div class="big" id="cdBig">…</div>
   <div class="sub" id="cdSub"></div>
 </div>
+<div class="snd" id="sndAmb" style="display:none" onclick="unmuteAmb()">tap for sound</div>
 <button id="editLink" onclick="openEditor()">edit</button>
 <script>
 const API = 'https://wigglesworth-moderator-applications.onrender.com/api/config';
 const ADMIN_API = 'https://wigglesworth-moderator-applications.onrender.com/api/admin/config';
 const UPLOAD_API = 'https://wigglesworth-moderator-applications.onrender.com/api/admin/upload-video';
 let endVideo = '';
-function plural(n, w){ return n + ' ' + w + (n === 1 ? '' : 's'); }
+const T = { days: 'day {d} left.', final: '{h}h {m}m {s}s left.', sub: '{h}h {m}m {s}s to go',
+  done: 'completed.', end: 'that was it.', soon: 'soon.' };
+function fmt(tpl, d, h, m, s){
+  return String(tpl).split('{d}').join(d).split('{h}').join(h).split('{m}').join(m).split('{s}').join(s);
+}
+let ambAudio = null, ambUrl = '';
+function startAmbience(url){
+  stopAmbience();
+  ambUrl = url || '';
+  if(!/^https:\/\/[^"<>\s]+$/i.test(ambUrl)) return;
+  ambAudio = new Audio(ambUrl);
+  ambAudio.loop = true; ambAudio.muted = true;
+  ambAudio.play().catch(() => {});
+  const h = document.getElementById('sndAmb');
+  if(h) h.style.display = 'block';
+}
+function stopAmbience(){
+  if(ambAudio){ try{ ambAudio.pause(); }catch{} ambAudio = null; }
+  const h = document.getElementById('sndAmb');
+  if(h) h.style.display = 'none';
+}
+function unmuteAmb(){
+  if(!ambAudio) return;
+  ambAudio.muted = false;
+  const h = document.getElementById('sndAmb');
+  if(h) h.style.display = 'none';
+}
+document.addEventListener('click', () => {
+  const p = document.getElementById('epanel');
+  if(p && p.classList.contains('open')) return;
+  if(ambAudio && ambAudio.muted) unmuteAmb();
+});
 function ytId(url){
   const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([\w-]{6,})/);
   return m ? m[1] : '';
@@ -71,6 +103,7 @@ function ytId(url){
 function showVideo(){
   const stage = document.querySelector('.stage');
   if(!/^https:\/\/[^"<>\s]+$/i.test(endVideo)){ completedFallback(); return; }
+  if(ambAudio){ try{ ambAudio.pause(); }catch{} }
   document.body.classList.add('playing');
   const id = ytId(endVideo);
   if(id){
@@ -96,17 +129,19 @@ if(!window._ytHooked){
     if(d && d.event === 'onStateChange' && d.info === 0) showEndCard();
   });
 }
+function escHtml(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function showEndCard(){
   const stage = document.querySelector('.stage');
-  stage.innerHTML = '<div class="big">that was it.</div>'
+  stage.innerHTML = '<div class="big">' + escHtml(T.end) + '</div>'
     + '<div class="erow2"><button onclick="showVideo()">watch again</button>'
     + '<button onclick="backToCountdown()">back to countdown</button></div>';
 }
 function backToCountdown(){
   const stage = document.querySelector('.stage');
-  stage.innerHTML = '<div class="kicker">' + (window._cdTitle || '') + '</div>'
-    + '<div class="big">completed.</div><div class="sub"></div>'
+  stage.innerHTML = '<div class="kicker">' + escHtml(window._cdTitle || '') + '</div>'
+    + '<div class="big">' + escHtml(T.done) + '</div><div class="sub"></div>'
     + '<div class="erow2"><button onclick="showVideo()">watch again</button></div>';
+  if(ambAudio){ ambAudio.play().catch(() => {}); }
 }
 function unmute(){
   const v = document.getElementById('teaser');
@@ -116,7 +151,7 @@ function unmute(){
   if(s) s.style.display = 'none';
 }
 function completedFallback(){
-  document.getElementById('cdBig').textContent = 'completed.';
+  document.getElementById('cdBig').textContent = T.done;
   document.getElementById('cdSub').textContent = '';
 }
 function render(target, title){
@@ -130,25 +165,32 @@ function render(target, title){
   const h = Math.floor(ms / 3600000) % 24;
   const m = Math.floor(ms / 60000) % 60;
   const s = Math.floor(ms / 1000) % 60;
-  if(d > 0){ big.textContent = 'day ' + d + ' left.'; sub.textContent = h + 'h ' + m + 'm ' + s + 's to go'; }
-  else { big.textContent = h + 'h ' + m + 'm ' + s + 's left.'; sub.textContent = ''; }
+  const p = n => String(n).padStart(2, '0');
+  if(d > 0){ big.textContent = fmt(T.days, d, p(h), p(m), p(s)); sub.textContent = fmt(T.sub, d, p(h), p(m), p(s)); }
+  else { big.textContent = fmt(T.final, d, p(h), p(m), p(s)); sub.textContent = ''; }
   return true;
+}
+function applyTexts(c){
+  T.days = c.daysLine || T.days; T.final = c.finalLine || T.final; T.sub = c.subLine || T.sub;
+  T.done = c.completedLine || T.done; T.end = c.endCardLine || T.end; T.soon = c.soonLine || T.soon;
 }
 fetch(API).then(r => r.json()).then(cfg => {
   const c = (cfg && cfg.countdown) || {};
   const t = Date.parse(c.target || '');
   const title = c.title || 'update';
   endVideo = (c.endVideo || '').trim();
+  applyTexts(c);
+  startAmbience(c.ambience || '');
   if(!c.show || !t){
     document.getElementById('cdTitle').textContent = title;
-    document.getElementById('cdBig').textContent = 'soon.';
+    document.getElementById('cdBig').textContent = T.soon;
     document.getElementById('cdSub').textContent = '';
     return;
   }
   if(render(t, title)) setInterval(() => { if(!render(t, title)) return; }, 1000);
 }).catch(() => {
   document.getElementById('cdTitle').textContent = 'update';
-  document.getElementById('cdBig').textContent = 'soon.';
+  document.getElementById('cdBig').textContent = T.soon;
   document.getElementById('cdSub').textContent = '';
 });
 // ---- staff editor (same edit code as the main site) ----
@@ -173,9 +215,17 @@ function openEditor(){
       + '<label>Title</label><input id="etitle" placeholder="e.g. Update 2.0 drops in">'
       + '<label>Date &amp; time (your timezone)</label><input id="edate" type="datetime-local">'
       + '<label>End video — plays at zero (YouTube or .mp4 link)</label><input id="evideo" placeholder="https://…">'
-      + '<label>…or drag an MP4 / WebM here (60MB max, goes live in ~1 min)</label>'
-      + '<input id="evideofile" type="file" accept="video/mp4,video/webm">'
+      + '<label>…or drag an MP4 / WebM / MP3 here (60MB max, goes live in ~1 min)</label>'
+      + '<input id="evideofile" type="file" accept="video/mp4,video/webm,audio/mpeg,audio/ogg,audio/wav">'
       + '<div id="eupmsg" class="hint"></div>'
+      + '<label>Spooky ambience — MP3 link, loops forever (empty for silence)</label><input id="eamb" placeholder="https://…/ambience.mp3">'
+      + '<label>Words — {d}=days {h}=hours {m}=mins {s}=secs</label>'
+      + '<input id="edays" placeholder="day {d} left.">'
+      + '<input id="efinal" placeholder="{h}h {m}m {s}s left." style="margin-top:6px">'
+      + '<input id="esub" placeholder="{h}h {m}m {s}s to go" style="margin-top:6px">'
+      + '<input id="edone" placeholder="completed." style="margin-top:6px">'
+      + '<input id="eend" placeholder="that was it." style="margin-top:6px">'
+      + '<input id="esoon" placeholder="soon." style="margin-top:6px">'
       + '<div class="erow"><button id="eclose" onclick="closeEditor()">Close</button>'
       + '<button id="esave" onclick="unlockSave()">Save</button></div></div>'
       + '<div id="emsg"></div></div>';
@@ -204,14 +254,16 @@ function showAuth(){
 function emsg(t){ document.getElementById('emsg').textContent = t; }
 function upmsg(t){ document.getElementById('eupmsg').textContent = t; }
 async function uploadVideo(f){
-  if(!/^video\/(mp4|webm)$/.test(f.type) && !/\.(mp4|webm)$/i.test(f.name)){ upmsg('MP4 or WebM only.'); return; }
+  const isAudio = /^audio\//.test(f.type) || /\.(mp3|ogg|wav|m4a)$/i.test(f.name);
+  const isVideo = /^video\//.test(f.type) || /\.(mp4|webm)$/i.test(f.name);
+  if(!isAudio && !isVideo){ upmsg('MP4, WebM or MP3 only.'); return; }
   if(f.size > 60 * 1024 * 1024){ upmsg('Too big — 60MB max.'); return; }
   upmsg('Uploading ' + Math.round(f.size / 1048576) + 'MB…');
   try{
-    const r = await fetch(UPLOAD_API, { method: 'POST', headers: { 'Content-Type': f.type || 'video/mp4', 'x-edit-code': ecode() }, body: f });
+    const r = await fetch(UPLOAD_API, { method: 'POST', headers: { 'Content-Type': f.type || (isAudio ? 'audio/mpeg' : 'video/mp4'), 'x-edit-code': ecode() }, body: f });
     const j = await r.json().catch(() => ({}));
     if(!r.ok) throw new Error(j.error || 'Upload failed');
-    document.getElementById('evideo').value = j.url;
+    document.getElementById(isAudio ? 'eamb' : 'evideo').value = j.url;
     upmsg('Uploaded — hit Save, live in about a minute.');
   }catch(err){ upmsg(err.message); }
 }
@@ -239,6 +291,13 @@ async function loadFull(){
     document.getElementById('etitle').value = c.title || '';
     document.getElementById('edate').value = isoToLocal(c.target);
     document.getElementById('evideo').value = c.endVideo || '';
+    document.getElementById('eamb').value = c.ambience || '';
+    document.getElementById('edays').value = c.daysLine || '';
+    document.getElementById('efinal').value = c.finalLine || '';
+    document.getElementById('esub').value = c.subLine || '';
+    document.getElementById('edone').value = c.completedLine || '';
+    document.getElementById('eend').value = c.endCardLine || '';
+    document.getElementById('esoon').value = c.soonLine || '';
     window._fullCfg = cfg;
     document.getElementById('eauth').style.display = 'none';
     document.getElementById('eform').style.display = 'block';
@@ -254,6 +313,13 @@ async function saveFull(){
     title: document.getElementById('etitle').value,
     target: localToIso(document.getElementById('edate').value),
     endVideo: document.getElementById('evideo').value.trim(),
+    ambience: document.getElementById('eamb').value.trim(),
+    daysLine: document.getElementById('edays').value,
+    finalLine: document.getElementById('efinal').value,
+    subLine: document.getElementById('esub').value,
+    completedLine: document.getElementById('edone').value,
+    endCardLine: document.getElementById('eend').value,
+    soonLine: document.getElementById('esoon').value,
   };
   try{
     const r = await fetch(ADMIN_API, { method: 'POST', headers: eheaders(), body: JSON.stringify(cfg) });
