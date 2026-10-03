@@ -28,6 +28,19 @@ body{margin:0;background:#000;color:#f02030;font-family:Caveat,cursive;display:f
 .sub{font-size:clamp(26px,4.5vw,40px);opacity:.9}
 .vid{transform:rotate(0);width:min(92vw,860px);margin:0 auto}
 .vid iframe,.vid video{width:100%;aspect-ratio:16/9;border:0;border-radius:10px;background:#000}
+#editLink{position:fixed;right:14px;bottom:12px;color:#4a0d15;background:none;border:0;cursor:pointer;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;letter-spacing:1px}
+#editLink:hover{color:#f02030}
+#epanel{position:fixed;inset:0;z-index:50;display:none;justify-content:center;align-items:center;background:rgba(0,0,0,.85);padding:16px}
+#epanel.open{display:flex}
+.ecard{width:100%;max-width:430px;background:#0d0d12;border:1px solid #3a0d14;border-radius:14px;padding:22px;color:#f5ecec;font-family:"Segoe UI",system-ui,sans-serif}
+.ecard h2{font-family:Caveat,cursive;color:#f02030;margin:0 0 4px;font-size:34px}
+.ecard label{display:block;font-size:11px;letter-spacing:1px;color:#a49dae;margin:14px 0 5px;text-transform:uppercase}
+.ecard input{width:100%;padding:10px 12px;border-radius:8px;border:1px solid #3a0d14;background:#000;color:#f5ecec;font-size:14px;color-scheme:dark}
+.erow{display:flex;gap:8px;margin-top:16px}
+.erow button{flex:1;padding:11px;border-radius:9px;border:0;font-weight:800;cursor:pointer}
+#esave{background:#f02030;color:#fff}
+#eclose{background:transparent;color:#a49dae;border:1px solid #3a3348}
+#emsg{font-size:13px;min-height:18px;margin-top:10px;color:#f02030}
 </style>
 </head>
 <body>
@@ -36,8 +49,10 @@ body{margin:0;background:#000;color:#f02030;font-family:Caveat,cursive;display:f
   <div class="big" id="cdBig">…</div>
   <div class="sub" id="cdSub"></div>
 </div>
+<button id="editLink" onclick="openEditor()">edit</button>
 <script>
 const API = 'https://wigglesworth-moderator-applications.onrender.com/api/config';
+const ADMIN_API = 'https://wigglesworth-moderator-applications.onrender.com/api/admin/config';
 let endVideo = '';
 function plural(n, w){ return n + ' ' + w + (n === 1 ? '' : 's'); }
 function ytId(url){
@@ -93,6 +108,92 @@ fetch(API).then(r => r.json()).then(cfg => {
   document.getElementById('cdBig').textContent = 'soon.';
   document.getElementById('cdSub').textContent = '';
 });
+// ---- staff editor (same edit code as the main site) ----
+function ecode(){ return sessionStorage.getItem('cd_edit_code') || ''; }
+function eheaders(){ return { 'Content-Type': 'application/json', 'x-edit-code': ecode() }; }
+function isoToLocal(iso){
+  const d = new Date(iso); if(isNaN(d)) return '';
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function localToIso(v){ const d = new Date(v); return isNaN(d) ? '' : d.toISOString(); }
+function openEditor(){
+  let p = document.getElementById('epanel');
+  if(!p){
+    p = document.createElement('div'); p.id = 'epanel';
+    p.innerHTML = '<div class="ecard"><h2>Countdown setup</h2><div id="eauth">'
+      + '<label>Edit code (same as main site)</label><input id="ecode" type="password" placeholder="Enter edit code">'
+      + '<div class="erow"><button id="eclose" onclick="closeEditor()">Cancel</button>'
+      + '<button id="esave" onclick="unlockSave()">Unlock</button></div></div>'
+      + '<div id="eform" style="display:none">'
+      + '<label><input id="eshow" type="checkbox" class="echeck" style="width:auto"> Show countdown</label>'
+      + '<label>Title</label><input id="etitle" placeholder="e.g. Update 2.0 drops in">'
+      + '<label>Date &amp; time (your timezone)</label><input id="edate" type="datetime-local">'
+      + '<label>End video — plays at zero (YouTube or .mp4 link)</label><input id="evideo" placeholder="https://…">'
+      + '<div class="erow"><button id="eclose" onclick="closeEditor()">Close</button>'
+      + '<button id="esave" onclick="unlockSave()">Save</button></div></div>'
+      + '<div id="emsg"></div></div>';
+    document.body.appendChild(p);
+    document.getElementById('ecode').addEventListener('keydown', e => { if(e.key === 'Enter') unlockSave(); });
+  }
+  document.getElementById('emsg').textContent = '';
+  if(ecode()){ loadFull(); } else { showAuth(); }
+  p.classList.add('open');
+}
+function closeEditor(){ document.getElementById('epanel').classList.remove('open'); }
+function showAuth(){
+  document.getElementById('eauth').style.display = 'block';
+  document.getElementById('eform').style.display = 'none';
+  document.querySelector('#epanel #esave').textContent = 'Unlock';
+}
+function emsg(t){ document.getElementById('emsg').textContent = t; }
+async function unlockSave(){
+  if(!ecode()){
+    const v = document.getElementById('ecode').value.trim();
+    if(!v){ emsg('Enter the edit code.'); return; }
+    try{
+      const r = await fetch(ADMIN_API, { headers: { 'x-edit-code': v } });
+      if(!r.ok) throw 0;
+      sessionStorage.setItem('cd_edit_code', v);
+      loadFull();
+    }catch{ emsg('Wrong code.'); }
+    return;
+  }
+  await saveFull();
+}
+async function loadFull(){
+  try{
+    const r = await fetch(ADMIN_API, { headers: eheaders() });
+    if(!r.ok) throw 0;
+    const cfg = await r.json();
+    const c = cfg.countdown || {};
+    document.getElementById('eshow').checked = !!c.show;
+    document.getElementById('etitle').value = c.title || '';
+    document.getElementById('edate').value = isoToLocal(c.target);
+    document.getElementById('evideo').value = c.endVideo || '';
+    window._fullCfg = cfg;
+    document.getElementById('eauth').style.display = 'none';
+    document.getElementById('eform').style.display = 'block';
+    document.querySelector('#epanel #esave').textContent = 'Save';
+    emsg('');
+  }catch{ sessionStorage.removeItem('cd_edit_code'); showAuth(); emsg('Wrong code.'); }
+}
+async function saveFull(){
+  if(!window._fullCfg){ emsg('Reload and unlock again.'); return; }
+  const cfg = window._fullCfg;
+  cfg.countdown = {
+    show: document.getElementById('eshow').checked,
+    title: document.getElementById('etitle').value,
+    target: localToIso(document.getElementById('edate').value),
+    endVideo: document.getElementById('evideo').value.trim(),
+  };
+  try{
+    const r = await fetch(ADMIN_API, { method: 'POST', headers: eheaders(), body: JSON.stringify(cfg) });
+    if(!r.ok) throw 0;
+    emsg('Saved — reloading…');
+    setTimeout(() => location.reload(), 700);
+  }catch{ emsg('Save failed — unlock again.'); }
+}
 </script>
 </body>
 </html>
